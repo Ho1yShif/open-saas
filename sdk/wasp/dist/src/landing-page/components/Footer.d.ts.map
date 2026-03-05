@@ -1,0 +1,1 @@
+{"version":3,"file":"Footer.d.ts","sourceRoot":"","sources":["../../../../src/landing-page/components/Footer.tsx"],"names":[],"mappings":"AAAA,UAAU,cAAc;IACtB,IAAI,EAAE,MAAM,CAAC;IACb,IAAI,EAAE,MAAM,CAAC;CACd;AAED,MAAM,CAAC,OAAO,UAAU,MAAM,CAAC,EAC7B,gBAAgB,GACjB,EAAE;IACD,gBAAgB,EAAE;QAChB,GAAG,EAAE,cAAc,EAAE,CAAC;QACtB,OAAO,EAAE,cAAc,EAAE,CAAC;KAC3B,CAAC;CACH,+BAiDA"}

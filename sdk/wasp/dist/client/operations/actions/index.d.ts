@@ -1,0 +1,20 @@
+import { type ActionFor } from './core';
+import { UpdateIsUserAdminById_ext } from 'wasp/server/operations/actions';
+import { GenerateGptResponse_ext } from 'wasp/server/operations/actions';
+import { CreateTask_ext } from 'wasp/server/operations/actions';
+import { DeleteTask_ext } from 'wasp/server/operations/actions';
+import { UpdateTask_ext } from 'wasp/server/operations/actions';
+import { GenerateCheckoutSession_ext } from 'wasp/server/operations/actions';
+import { CreateFileUploadUrl_ext } from 'wasp/server/operations/actions';
+import { AddFileToDb_ext } from 'wasp/server/operations/actions';
+import { DeleteFile_ext } from 'wasp/server/operations/actions';
+export declare const updateIsUserAdminById: ActionFor<UpdateIsUserAdminById_ext>;
+export declare const generateGptResponse: ActionFor<GenerateGptResponse_ext>;
+export declare const createTask: ActionFor<CreateTask_ext>;
+export declare const deleteTask: ActionFor<DeleteTask_ext>;
+export declare const updateTask: ActionFor<UpdateTask_ext>;
+export declare const generateCheckoutSession: ActionFor<GenerateCheckoutSession_ext>;
+export declare const createFileUploadUrl: ActionFor<CreateFileUploadUrl_ext>;
+export declare const addFileToDb: ActionFor<AddFileToDb_ext>;
+export declare const deleteFile: ActionFor<DeleteFile_ext>;
+//# sourceMappingURL=index.d.ts.map
