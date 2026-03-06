@@ -1,70 +1,85 @@
-services:
-  # Node.js server (built Wasp app, deployed via Docker from render-server branch)
-  - type: web
-    name: myapp-server
-    runtime: docker
-    plan: free
-    region: oregon
-    branch: render-server
-    autoDeploy: true
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: myapp-db
-          property: connectionString
-      - key: JWT_SECRET
-        generateValue: true
-      - key: WASP_SERVER_URL
-        fromService:
-          name: myapp-server
-          type: web
-          property: host
-      - key: CLIENT_URL
-        fromService:
-          name: myapp-client
-          type: web
-          property: host
-      - key: STRIPE_API_KEY
-        sync: false
-      - key: STRIPE_WEBHOOK_SECRET
-        sync: false
-      - key: PAYMENTS_HOBBY_SUBSCRIPTION_PLAN_ID
-        sync: false
-      - key: PAYMENTS_PRO_SUBSCRIPTION_PLAN_ID
-        sync: false
-      - key: PAYMENTS_CREDITS_10_PLAN_ID
-        sync: false
-      - key: ADMIN_EMAILS
-        sync: false
-      - key: SENDGRID_API_KEY
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
+projects:
+  - name: myapp
+    environments:
+      - name: production
+        services:
+          # Node.js server — Render installs Wasp CLI and builds from main
+          - type: web
+            name: myapp-server
+            runtime: node
+            plan: free
+            region: oregon
+            branch: main
+            autoDeploy: true
+            buildCommand: >-
+              curl -sSL https://get.wasp.sh/installer.sh | sh &&
+              export PATH="$HOME/.wasp/bin:$PATH" &&
+              cd template/app &&
+              wasp build &&
+              npm install &&
+              cd .wasp/out/server &&
+              npm install &&
+              npx prisma generate --schema=../db/schema.prisma &&
+              npm run bundle
+            startCommand: cd template/app/.wasp/out/server && npm run start-production
+            envVars:
+              - key: DATABASE_URL
+                fromDatabase:
+                  name: myapp-db
+                  property: connectionString
+              - key: JWT_SECRET
+                generateValue: true
+              - key: WASP_SERVER_URL
+                value: https://myapp-server-1j1o.onrender.com
+              - key: WASP_WEB_CLIENT_URL
+                value: https://myapp-client-jmd6.onrender.com
+              # Optional — uncomment to enable Stripe payments
+              # - key: STRIPE_API_KEY
+              #   sync: false
+              # - key: STRIPE_WEBHOOK_SECRET
+              #   sync: false
+              # - key: PAYMENTS_HOBBY_SUBSCRIPTION_PLAN_ID
+              #   sync: false
+              # - key: PAYMENTS_PRO_SUBSCRIPTION_PLAN_ID
+              #   sync: false
+              # - key: PAYMENTS_CREDITS_10_PLAN_ID
+              #   sync: false
+              - key: ADMIN_EMAILS
+                sync: false
+              # Optional — uncomment to enable transactional email via SendGrid
+              # - key: SENDGRID_API_KEY
+              #   sync: false
+              # Optional — uncomment to enable AI features
+              # - key: OPENAI_API_KEY
+              #   sync: false
 
-  # React client (built Wasp app static assets, deployed from render-client branch)
-  - type: web
-    name: myapp-client
-    runtime: static
-    branch: render-client
-    buildCommand: npm install && npm run build
-    staticPublishPath: build
-    autoDeploy: true
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      - key: REACT_APP_API_URL
-        fromService:
-          name: myapp-server
-          type: web
-          property: host
+          # React client — Render installs Wasp CLI, builds, and serves static output
+          - type: web
+            name: myapp-client
+            runtime: static
+            branch: main
+            buildCommand: >-
+              curl -sSL https://get.wasp.sh/installer.sh | sh &&
+              export PATH="$HOME/.wasp/bin:$PATH" &&
+              cd template/app &&
+              wasp build &&
+              npm install &&
+              REACT_APP_API_URL=$REACT_APP_API_URL npx vite build
+            staticPublishPath: template/app/.wasp/out/web-app/build
+            autoDeploy: true
+            routes:
+              - type: rewrite
+                source: /*
+                destination: /index.html
+            envVars:
+              - key: REACT_APP_API_URL
+                sync: false
 
-databases:
-  - name: myapp-db
-    databaseName: myapp
-    user: myapp
-    plan: free
-    region: oregon
-    postgresMajorVersion: "16"
-    ipAllowList: []
+        databases:
+          - name: myapp-db
+            databaseName: myapp
+            user: myapp
+            plan: free
+            region: oregon
+            postgresMajorVersion: "16"
+            ipAllowList: []

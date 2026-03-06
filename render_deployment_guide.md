@@ -1,8 +1,8 @@
-# Render Deployment Guide (Minimal)
+# Render deployment guide (minimal)
 
 This guide covers deploying Open SaaS on Render with a minimal feature set:
-- **Keeping**: Email auth, OpenAI (AI demo), Stripe payments, admin dashboard
-- **Skipping**: Google Analytics, Plausible Analytics, Google/GitHub OAuth, AWS S3 file uploads
+- **Keeping**: core auth + admin dashboard
+- **Skipping**: payments, email provider setup, AI features, analytics, OAuth, S3
 
 ---
 
@@ -11,13 +11,10 @@ This guide covers deploying Open SaaS on Render with a minimal feature set:
 - [Wasp CLI](https://wasp.sh/docs/quick-start) installed (`curl -sSL https://get.wasp.sh/installer.sh | sh`)
 - [Node.js 20+](https://nodejs.org/)
 - A [Render](https://render.com) account
-- A [Stripe](https://stripe.com) account (test mode is fine to start)
-- A [SendGrid](https://sendgrid.com) account (free tier works) for email verification
-- An [OpenAI](https://platform.openai.com) API key
 
 ---
 
-## Step 1: Pre-flight Code Changes
+## Step 1: Pre-flight code changes
 
 Before building, make a few small changes to the app.
 
@@ -26,66 +23,14 @@ Before building, make a few small changes to the app.
 An `.env.example` file at the root of this project lists every variable you'll need. Use it as a checklist — fill in each value as you work through the steps below.
 
 ```bash
-cp .env.example .env.render   # or just open .env.example and paste values into Render as you go
+cp .env.example .env
 ```
 
 > Never commit a filled-in env file to git. `.env.example` contains only blank placeholders and is safe to commit.
 
-### 1b. Set up SendGrid and update main.wasp
+### 1b. Remove the Plausible script tags from main.wasp
 
-SendGrid's free tier allows 100 emails/day with no expiration — enough for an early-stage app.
-
-**Create a SendGrid account:**
-1. [Go to SendGrid](https://login.sendgrid.com/unified_login/start?screen_hint=signup) to sign up for free
-2. If you have the option to set up sending, just choose **Skip to Dashboard**
-3. Click **Create sender identity** on the welcome screen or go to **Settings → Sender Authentication**
-2. Under **Single Sender Verification**, click **Get Started** (or **Create New Sender**)
-3. Fill in the form:
-   - **From Name**: Your app name (e.g., `My SaaS App`)
-   - **From Email Address**: An address you own and can receive mail at (e.g., `you@gmail.com` or `noreply@yourdomain.com`)
-   - **Reply To**: Same address or another you control
-   - Fill in the remaining company fields (required by SendGrid)
-4. Click **Create** — SendGrid sends a verification email to that address
-5. Open the email and click **Verify Single Sender**
-
-**Create a SendGrid API key:**
-1. Go to **Settings → API Keys → Create API Key**
-2. Name it (e.g., `open-saas-production`)
-3. Select **Custom Access** and enable **Mail Send → Full Access**
-4. Click **Create & View** — copy the key immediately (starts with `SG.`, shown only once)
-5. Store it in your `.env` file. This is your `SENDGRID_API_KEY` for the Render env vars in Step 6
-
-**Update `template/app/main.wasp`** — there are **two places** to change:
-
-```wasp
-auth: {
-  methods: {
-    email: {
-      fromField: {
-        name: "Your App Name",
-        email: "you@yourdomain.com",  // <-- change to your verified SendGrid sender
-      },
-      // ...rest unchanged
-    },
-  },
-},
-
-// ...
-
-emailSender: {
-  provider: SendGrid,               // <-- change from Dummy to SendGrid
-  defaultFrom: {
-    name: "Your App Name",
-    email: "you@yourdomain.com",    // <-- same verified SendGrid sender as above
-  },
-},
-```
-
-Both `fromField.email` (auth emails: verification, password reset) and `emailSender.defaultFrom.email` must match your verified SendGrid sender exactly, or the send will be rejected.
-
-### 1c. Remove the Plausible script tags from main.wasp
-
-In the same file, find the `head` array and comment out these two lines:
+In `template/app/main.wasp`, find the `head` array and comment out these two lines:
 
 ```wasp
 "<script defer data-domain='<your-site-id>' src='https://plausible.io/js/script.js'></script>",  // for production
@@ -94,201 +39,50 @@ In the same file, find the `head` array and comment out these two lines:
 
 ---
 
-## Step 2: Set Up Stripe (Free)
+## Step 2: Generate database migrations
 
+Render runs `wasp build` for you during the build phase, but you still need to generate migration files locally and commit them to `main`. The migration files in `template/app/migrations/` are what Prisma uses to create your database tables on first startup — without them, `prisma migrate deploy` will have nothing to apply and signup will return a 500 error.
 
-### 2a. Create a Stripe account
+`wasp db migrate-dev` requires a running local database. The easiest way is to use Wasp's managed dev database, which runs in Docker:
 
-1. Go to [https://stripe.com](https://stripe.com) and sign up
-2. You do **not** need to activate your account or provide banking details for test mode — just verify your email
-3. You'll land on the Stripe Dashboard in **test mode** by default (look for the "Test mode" toggle in the top right — make sure it's on)
-
-### 2b. Create the three products
-
-You need three products: two subscription plans and one one-time credit pack.
-
-**Hobby subscription:**
-1. Go to **Product catalog → Add product** (or [direct link in test mode](https://dashboard.stripe.com/test/products/create))
-2. Fill in:
-   - **Name**: `Hobby`
-   - **Description**: `Basic subscription` (optional)
-3. Under **Pricing**, click **Add a price**:
-   - **Pricing model**: Standard pricing
-   - **Price**: `9.00`
-   - **Currency**: USD
-   - **Billing period**: Monthly
-4. Click **Add product**
-5. On the product page, find the price under **Pricing**, click the 3-dots/kebab menu, and copy the **Price ID** (format: `price_1AbcXyz...`)
-6. Store it under the `PAYMENTS_HOBBY_SUBSCRIPTION_PLAN_ID` in your .env file
-
-**Pro subscription:**
-1. Click **Add product** again
-2. Fill in:
-   - **Name**: `Pro`
-3. Under **Pricing**, click **Add a price**:
-   - **Price**: `29.00`, **Billing period**: Monthly
-4. Save and copy the **Price ID**
-5. Store it under the `PAYMENTS_PRO_SUBSCRIPTION_PLAN_ID` in your .env file
-
-**10 Credits (one-time):**
-1. Click **Add product** again
-2. Fill in:
-   - **Name**: `10 Credits`
-3. Under **Pricing**, click **Add a price**:
-   - **Pricing model**: One-off
-   - **Price**: `9.99`
-   - **Billing period**: **One time** (not recurring)
-4. Save and copy the **Price ID**
-5. Store it under the `PAYMENTS_CREDITS_10_PLAN_ID` in your .env file
-
-You should now have three price IDs in your .env file that look like:
-```
-price_1AbcHobby...   → PAYMENTS_HOBBY_SUBSCRIPTION_PLAN_ID
-price_1AbcPro...     → PAYMENTS_PRO_SUBSCRIPTION_PLAN_ID
-price_1AbcCredits... → PAYMENTS_CREDITS_10_PLAN_ID
-```
-
-### 2c. Copy your Stripe secret key
-
-1. Click the hear to navigate to settings. Go to **Developers → API keys** (or [direct link](https://dashboard.stripe.com/test/apikeys))
-2. Copy the **Secret key** — it starts with `sk_test_...`
-3. Save it in your .env under `STRIPE_API_KEY`
-
-> The **Publishable key** (`pk_test_...`) is for client-side use only. Open SaaS does not need it in your env vars.
-
----
-
-## Step 2d: Get Your OpenAI API Key
-
-The AI demo feature in Open SaaS calls the OpenAI API. **You need a key** — the server will fail to start without `OPENAI_API_KEY` in its environment.
-
-> **Does it cost money?** New accounts get $5 in free credits (enough for thousands of demo calls). After that, usage is billed per token — typically fractions of a cent per request.
-
-1. Go to [https://platform.openai.com/signup](https://platform.openai.com/signup) and create an account (or log in)
-2. Verify your email if prompted
-3. Go to **API Keys** (top-right menu → **API keys**, or [direct link](https://platform.openai.com/api-keys))
-4. Click **Create new secret key**
-   - **Name**: `open-saas-production` (optional)
-   - Leave permissions at default
-5. Click **Create secret key** — copy the key immediately (starts with `sk-...`, shown only once)
-6. Store it in your `.env` file under `OPENAI_API_KEY`
-
-> **Optional but recommended:** Set a monthly **spend limit** under **Settings → Limits** to avoid surprise charges. $5–10 is plenty for testing.
-
----
-
-## Step 3: Build the Wasp App
+1. Open **Docker Desktop** (install it from [docker.com](https://www.docker.com/products/docker-desktop/) if needed — the free version works fine)
+2. Wait until the Docker icon in your menu bar shows "Docker Desktop is running"
+3. Then run:
 
 ```bash
 cd template/app
-wasp build
+wasp start db
 ```
 
-This generates compiled artifacts in `template/app/.wasp/build/`:
-- `server/` — Node.js server with a `Dockerfile`
-- `web-app/` — React/Vite static client
-
----
-
-## Step 4: Push Build Artifacts to GitHub
-
-`.wasp/` is gitignored, so the build output can't ride along with your normal commits. In this fork, the simplest approach is to push the built artifacts to two dedicated **deployment branches** in that same fork — no new repos needed.
-
-```bash
-# Server — push to the render-server branch in your fork
-cd template/app/.wasp/build/server    # ← must be inside build/server, not template/app
-git init && git add -A
-git commit -m "server build"
-git push https://github.com/Ho1yShif/open-saas.git HEAD:render-server --force
-
-# Client — push to the render-client branch in your fork
-cd ../web-app                          # ← must be inside build/web-app
-git init && git add -A
-git commit -m "client build"
-git push https://github.com/Ho1yShif/open-saas.git HEAD:render-client --force
-```
-
-> **Common mistake:** Running `git push` from `template/app` instead of `template/app/.wasp/build/server` pushes the Wasp source files instead of the compiled artifacts. Render will then fail with `open Dockerfile: no such file or directory` because the source tree has no Dockerfile at its root. Always `cd` into the build subdirectory first.
-
-**Verify before moving on** — confirm both branches contain the right files:
-
-```bash
-# Should print "Dockerfile" — if it doesn't, you pushed from the wrong directory
-git ls-tree --name-only origin/render-server | grep Dockerfile
-
-# Should print "index.html" (or similar) — the compiled React output
-git ls-tree --name-only origin/render-client
-```
-
-When connecting services in Render (Step 5), select `Ho1yShif/open-saas` and set:
-- Web Service → branch: `render-server`
-- Static Site → branch: `render-client`
-
-> **Why `--force`?** Each `wasp build` creates a fresh `git init` with no shared history, so force is required. These are throw-away deployment branches — your `main` branch is untouched.
-
-### Redeploying after code changes
+Leave that terminal running. In a new terminal:
 
 ```bash
 cd template/app
-wasp build
-
-cd .wasp/build/server                 # ← cd into build/server first
-git init && git add -A && git commit -m "update"
-git push https://github.com/Ho1yShif/open-saas.git HEAD:render-server --force
-
-cd ../web-app                         # ← then into build/web-app
-git init && git add -A && git commit -m "update"
-git push https://github.com/Ho1yShif/open-saas.git HEAD:render-client --force
+wasp db migrate-dev
 ```
 
-Render auto-deploys when it detects a new commit on the watched branch.
+> If prompted for a migration name, enter anything (e.g. `init`).
 
----
+> **No Docker?** Use `prisma db push` against your Render external database URL instead — see the [Troubleshooting](#troubleshooting) section.
 
-## Step 4b: Deploy via Blueprint (Alternative to Manual Step 5)
-
-A `render.yaml` Blueprint at the root of this repo defines all three services — database, server, and client — as Infrastructure-as-Code. You can use it to recreate the entire stack in one click instead of following Step 5 manually.
-
-### What the Blueprint does
-
-- **`myapp-db`** — PostgreSQL 16, free tier, Oregon
-- **`myapp-server`** — Docker web service from the `render-server` branch; auto-links `DATABASE_URL`, `WASP_SERVER_URL`, and `CLIENT_URL` from other services; prompts for secrets
-- **`myapp-client`** — Static site from the `render-client` branch; auto-links `REACT_APP_API_URL` from the server
-
-### Deploy via Blueprint Dashboard link
-
-First, push the `render.yaml` to your fork's `main` branch so Render can find it:
+Commit the generated migration files to `main`:
 
 ```bash
-git add render.yaml
-git commit -m "Add Render Blueprint"
+git add template/app/migrations/
+git commit -m "add initial migrations"
 git push origin main
 ```
 
-Then open this link to launch the Blueprint wizard:
-
-```
-https://dashboard.render.com/blueprint/new?repo=https://github.com/Ho1yShif/open-saas
-```
-
-Fill in the secret environment variables when prompted (same values from Steps 1b–2d):
-- `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `PAYMENTS_*_PLAN_ID`
-- `ADMIN_EMAILS`
-- `SENDGRID_API_KEY`
-- `OPENAI_API_KEY`
-
-Click **Apply** — Render creates all three resources and starts deploying.
-
-> If you used the Blueprint, skip Step 5. Continue from Step 6 only to verify variables and add `STRIPE_WEBHOOK_SECRET` after deploying.
-
 ---
 
-## Step 5: Create Render Services
+## Step 3: Create Render services
 
 You'll create three things in Render: a **PostgreSQL database**, a **Web Service** (the Node.js server), and a **Static Site** (the React client). Create them in this order.
 
-### 5a. Create the Render PostgreSQL Database
-> Use `render-deploy` Claude skill to speed this up
+> **Tip:** A `render.yaml` Blueprint at the repo root defines all three resources. You can use **New → Blueprint** in the Render dashboard to create everything in one step instead of manually following 3a–3c. You'll still need to fill in the `sync: false` env vars (like `ADMIN_EMAILS` and `REACT_APP_API_URL`) after the Blueprint applies.
+
+### 3a. Create the Render PostgreSQL database
+> Use the `render-deploy` Claude/Codex skill to speed this up so you don't have to create resources manually
 > Render PostgreSQL free tier expires after 90 days. For a permanent free database, use the **Starter** plan ($7/mo) or connect an external Postgres service. For initial testing, free works fine.
 
 1. In Render Dashboard, click **New → PostgreSQL**
@@ -308,179 +102,173 @@ You'll create three things in Render: a **PostgreSQL database**, a **Web Service
    ```
    postgresql://myapp:PASSWORD@dpg-xxxxx-a/myapp
    ```
-   Save this — you'll use it as `DATABASE_URL` in Step 6.
+   Save this — you'll use it as `DATABASE_URL` in Step 4.
 
 > **Why internal URL?** Render services communicate with each other over a private network, which is faster and avoids bandwidth charges. Always use the internal URL for `DATABASE_URL` on the server.
 
-### 5b. Create the Server (Web Service)
+### 3b. Create the server (web service)
 
 1. In Render Dashboard, click **New → Web Service**
-2. Choose **Build and deploy from a Git repository**, then connect `Ho1yShif/open-saas`
+2. Choose **Build and deploy from a Git repository**, then connect your project repo
 3. Fill in the settings:
    - **Name**: `myapp-server`
    - **Region**: **Same region as your database** (critical — otherwise internal URL won't work)
-   - **Branch**: `render-server`
-   - **Runtime**: `Docker` — Render will auto-detect the `Dockerfile` in the repo root
+   - **Branch**: `main`
+   - **Runtime**: `Node` — the Wasp-generated server is a standard Express/Node.js app
+   - **Build Command**: (paste the full command from `render.yaml` → `buildCommand`, or let the Blueprint set it)
+   - **Start Command**: `cd template/app/.wasp/out/server && npm run start-production`
    - **Instance Type**: `Free` (spins down after 15min inactivity) or `Starter` ($7/mo, always-on)
-4. Scroll down to **Environment Variables** — add all the server env vars from Step 6 now
+4. Scroll down to **Environment Variables** — add all the server env vars from Step 4 now
 5. Do **not** click Deploy yet — you need the server URL first, which Render shows before you deploy:
-   - Look at the top of the Web Service page for the URL (e.g., `https://myapp-server.onrender.com`)
+   - Look at the top of the Web Service page for the URL (e.g., `https://<YOUR_SERVER_SUBDOMAIN>.onrender.com`)
    - Note it down — you need it for `WASP_SERVER_URL` and for the client's `REACT_APP_API_URL`
 
-### 5c. Create the Client (Static Site)
+> **Build time note:** The build command installs the Wasp CLI and compiles the app from source. On Render's free tier, this can take 10–15 minutes. If builds time out, upgrade to the Starter plan.
+
+### 3c. Create the client (static site)
 
 1. In Render Dashboard, click **New → Static Site**
-2. Connect `Ho1yShif/open-saas`
+2. Connect your project repo
 3. Fill in the settings:
    - **Name**: `myapp-client`
-   - **Branch**: `render-client`
-   - **Build Command**: `npm install && npm run build`
-   - **Publish Directory**: `build`
+   - **Branch**: `main`
+   - **Build Command**: (paste the full command from `render.yaml` → `buildCommand` for the client service)
+   - **Publish Directory**: `template/app/.wasp/out/web-app/build`
 4. Under **Environment Variables**, add:
-   - `REACT_APP_API_URL` = `https://myapp-server.onrender.com` (your server URL from 5b)
+   - `REACT_APP_API_URL` = `https://<YOUR_SERVER_SUBDOMAIN>.onrender.com` (your server URL from 3b)
+
+   > `REACT_APP_API_URL` must be set **before** the first deploy — Vite bakes it into the client bundle at build time. If you need to change the server URL later, update this env var and trigger a redeploy.
 5. Click **Create Static Site** — static sites are free on Render with no time limits
-6. Note your client URL (e.g., `https://myapp-client.onrender.com`) — needed for `CLIENT_URL` in the server env vars
+6. Note your client URL (e.g., `https://<YOUR_CLIENT_SUBDOMAIN>.onrender.com`) — needed for `CLIENT_URL` in the server env vars
+
+### 3d. Record your URLs and update env vars
+
+At this point you have both service URLs. Write them down:
+
+| Variable | Your value |
+|---|---|
+| `WASP_SERVER_URL` | `https://<YOUR_SERVER_SUBDOMAIN>.onrender.com` |
+| `CLIENT_URL` | `https://<YOUR_CLIENT_SUBDOMAIN>.onrender.com` |
+
+Update `WASP_SERVER_URL` and `WASP_WEB_CLIENT_URL` in your Render Web Service environment variables (Settings → Environment). These two must always stay in sync — `WASP_SERVER_URL` tells the server its own public address, and `WASP_WEB_CLIENT_URL` is used for CORS.
+
+### Redeploying after code changes
+
+```bash
+git push origin main
+```
+
+Render auto-deploys when it detects a new commit on `main`. If you add a new database migration, run `wasp db migrate-dev` locally first, then commit the generated `template/app/migrations/` files along with your code changes.
 
 ---
 
-## Step 6: Configure Environment Variables
+## Step 4: Configure environment variables
 
-### Server Environment Variables
+### Recommended: Use a Render Environment Group
 
-Set these in your Render Web Service (Settings → Environment):
+Rather than entering each variable directly into each service, we recommend creating a **Render Environment Group** and linking it to both your Web Service (server) and Static Site (client). This lets you update a shared variable (e.g. `WASP_SERVER_URL`) in one place and have it apply to every linked service automatically.
+
+1. In the Render Dashboard, go to **Environment Groups → New Environment Group**
+2. Name it something like `myapp-shared`
+3. Add all the variables listed below
+4. When creating (or editing) your Web Service and Static Site, scroll to **Environment** and click **Link Environment Group** — select `myapp-shared`
+
+Any variable you add to the group will be available in every linked service. You can still add service-specific overrides directly on a service if needed.
+
+---
+
+### Server environment variables
+
+Set these in your Render Web Service (Settings → Environment), or add them to your Environment Group:
 
 | Variable | Value | Notes |
 |---|---|---|
 | `DATABASE_URL` | `postgresql://...` | Internal URL from Render PostgreSQL |
 | `JWT_SECRET` | `<random-64-char-string>` | Run: `openssl rand -hex 32` |
-| `WASP_SERVER_URL` | `https://myapp-server.onrender.com` | Your Render server URL |
-| `CLIENT_URL` | `https://myapp-client.onrender.com` | Your Render client URL |
-| `STRIPE_API_KEY` | `sk_test_...` | Stripe test key to start |
-| `STRIPE_WEBHOOK_SECRET` | `whsec_...` | From Step 7 below |
-| `PAYMENTS_HOBBY_SUBSCRIPTION_PLAN_ID` | `price_...` | Stripe price ID for Hobby plan |
-| `PAYMENTS_PRO_SUBSCRIPTION_PLAN_ID` | `price_...` | Stripe price ID for Pro plan |
-| `PAYMENTS_CREDITS_10_PLAN_ID` | `price_...` | Stripe price ID for 10 Credits |
+| `WASP_SERVER_URL` | `https://<YOUR_SERVER_SUBDOMAIN>.onrender.com` | Your Render server URL |
+| `CLIENT_URL` | `https://<YOUR_CLIENT_SUBDOMAIN>.onrender.com` | Your Render client URL |
 | `ADMIN_EMAILS` | `you@example.com` | Comma-separated list of admin emails |
-| `SENDGRID_API_KEY` | `SG.xxx...` | SendGrid API key |
-| `OPENAI_API_KEY` | `sk-...` | OpenAI API key |
+
+> **Stripe, SendGrid, and OpenAI are optional** and skipped in this guide. The app will start and run without them — payments, transactional email, and AI features simply won't work until you add those keys later.
 
 **Do not set**: `GOOGLE_ANALYTICS_*`, `PLAUSIBLE_*`, `AWS_S3_*`, `GOOGLE_CLIENT_*`, `LEMONSQUEEZY_*`, `POLAR_*`
 
-### Client Environment Variable
+> For local dev, make sure to use the external URLs for Render services, not the internal URLs
 
-Set this in your Render Static Site (Settings → Environment):
+### Client environment variable
 
-| Variable | Value | Notes |
-|---|---|---|
-| `REACT_APP_API_URL` | `https://myapp-server.onrender.com` | Must be set at BUILD time |
+Set `REACT_APP_API_URL` on the Static Site to the full server URL before the first deploy:
 
-> **Important**: `REACT_APP_API_URL` is baked into the static build. After setting it, trigger a manual deploy of the static site.
+```
+REACT_APP_API_URL = https://<YOUR_SERVER_SUBDOMAIN>.onrender.com
+```
 
----
-
-## Step 7: Set Up Stripe Webhook
-
-The webhook is how Stripe notifies your server when a payment completes, a subscription changes, or a payment fails. Without it, your app won't know when a user has paid.
-
-> **Is this free?** Yes — Stripe webhooks are free. There's no cost to receive events.
-
-1. Make sure your server is deployed and running on Render (from Step 8 — you may need to do a first deploy first, then come back here)
-2. Go to **Developers → Webhooks** in the Stripe Dashboard (make sure you're in **Test mode**):
-   [https://dashboard.stripe.com/test/webhooks](https://dashboard.stripe.com/test/webhooks)
-3. Click **Add endpoint**
-4. Fill in the form:
-   - **Endpoint URL**: `https://myapp-server.onrender.com/payments-webhook`
-     (replace with your actual Render server URL)
-   - **Description**: `Open SaaS payments` (optional)
-5. Under **Select events to listen to**, click **+ Select events** and add:
-   - `checkout.session.completed` — fires when a user completes checkout
-   - `customer.subscription.updated` — fires when a subscription changes (upgrade, downgrade, cancel)
-   - `customer.subscription.deleted` — fires when a subscription is fully cancelled
-   - `invoice.payment_failed` — fires when a renewal charge fails
-6. Click **Add endpoint** to save
-7. You'll land on the webhook detail page — click **Reveal** next to **Signing secret**
-8. Copy the value — it starts with `whsec_...`
-9. Go back to your Render Web Service → **Settings → Environment Variables**
-10. Add or update `STRIPE_WEBHOOK_SECRET` with the `whsec_...` value
-11. Trigger a **Manual Deploy** of the server so it picks up the new secret
-
-### Verifying the webhook works
-
-After deploying:
-1. In Stripe Dashboard → Webhooks, click on your endpoint
-2. Click **Send test webhook** → select `checkout.session.completed` → **Send test webhook**
-3. You should see a `200` response in the **Recent deliveries** section
-4. If you get a `400` or `500`, check Render server logs for the error
+Vite bakes this value into the client bundle at build time. To change it later, update the env var in Render and trigger a redeploy.
 
 ---
 
-## Step 8: Deploy
+## Step 5: Deploy
 
 1. In the Render Dashboard, trigger a manual deploy for both the **Web Service** (server) and **Static Site** (client)
-2. Watch the deploy logs — the server will run Prisma migrations automatically on first start
-3. Once both services are green, visit `https://myapp-client.onrender.com`
+2. Watch the deploy logs — the server will install the Wasp CLI, build the app, and run Prisma migrations automatically on first start
+3. Once both services are green, visit `https://<YOUR_CLIENT_SUBDOMAIN>.onrender.com`
 
----
 
-## Step 9: Create Your Admin Account
-
-1. Sign up at `https://myapp-client.onrender.com/signup` using one of the emails listed in `ADMIN_EMAILS`
-2. Check your email (SendGrid) for the verification link
-3. After verifying, go to `https://myapp-client.onrender.com/admin` to access the admin dashboard
-
----
-
-## Step 10: Switching to Production (Stripe Live Mode)
-
-> **What does live mode cost?** Stripe charges **2.9% + $0.30 per successful card transaction** (US). No monthly fee. You only pay when you earn. To activate live mode, Stripe requires you to provide your business/banking details for payouts.
-
-When ready to accept real payments:
-
-### 10a. Activate your Stripe account
-
-1. In the Stripe Dashboard, click **Activate account** in the top banner
-2. Follow the prompts to provide business details and a bank account for payouts
-3. Once approved (usually instant for US, a few days for some countries), the **Live mode** toggle becomes available
-
-### 10b. Recreate products in live mode
-
-Products and price IDs in test mode do **not** carry over to live mode.
-
-1. In Stripe Dashboard, flip the **Test mode** toggle to **Live mode** (top right)
-2. Go to **Products → Add product** and recreate all three products with the same prices:
-   - Hobby: $9/month recurring
-   - Pro: $29/month recurring
-   - 10 Credits: $9.99 one-time
-3. Copy the new **Price IDs** (they'll start with `price_` again but be different values)
-
-### 10c. Create a live mode webhook
-
-1. Go to **Developers → Webhooks** in live mode
-2. Add a new endpoint with the same URL and same four events as Step 7
-3. Copy the new `whsec_...` signing secret
-
-### 10d. Update Render environment variables
-
-In your Render Web Service → **Settings → Environment Variables**, update:
-
-| Variable | New value |
-|---|---|
-| `STRIPE_API_KEY` | `sk_live_...` (live secret key from Developers → API keys) |
-| `STRIPE_WEBHOOK_SECRET` | `whsec_...` (from the new live webhook) |
-| `PAYMENTS_HOBBY_SUBSCRIPTION_PLAN_ID` | live mode price ID |
-| `PAYMENTS_PRO_SUBSCRIPTION_PLAN_ID` | live mode price ID |
-| `PAYMENTS_CREDITS_10_PLAN_ID` | live mode price ID |
-
-Trigger a **Manual Deploy** after updating. Your app now accepts real payments.
-
----
-
-## Features Not Included (Minimal Setup)
+## Features not included (minimal setup)
 
 | Feature | What to do to enable it |
 |---|---|
+| Stripe payments | Create Stripe products, set `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, and the three `PAYMENTS_*_PLAN_ID` vars |
+| SendGrid email | Set up a SendGrid sender, update `emailSender` in `main.wasp`, set `SENDGRID_API_KEY` |
+| OpenAI / AI features | Set `OPENAI_API_KEY` |
 | Google Analytics | Set `REACT_APP_GOOGLE_ANALYTICS_ID` in client env |
 | Plausible Analytics | Set `PLAUSIBLE_API_KEY`, `PLAUSIBLE_SITE_ID`, `PLAUSIBLE_BASE_URL` in server env |
 | Google OAuth | Uncomment `google:` in `main.wasp`, set `GOOGLE_CLIENT_ID/SECRET` |
 | File Uploads (S3) | Set `AWS_S3_*` env vars, create S3 bucket with CORS policy |
-| LemonSqueezy payments | Change `paymentProcessor` in `src/payment/paymentProcessor.ts`, set `LEMONSQUEEZY_*` env vars |
+
+---
+
+## Troubleshooting
+
+### Signup returns 500 — "table does not exist"
+
+**Symptom:** `POST /auth/email/signup 500` with log error:
+```
+The table `public.AuthIdentity` does not exist in the current database.
+No migration found in prisma/migrations
+```
+
+**Cause:** `wasp db migrate-dev` was not run before `wasp build`, so no migration files were included in the deployment. `prisma migrate deploy` ran but had nothing to apply, leaving the database empty.
+
+**Fix:**
+```bash
+cd template/app
+wasp db migrate-dev   # generates migrations/
+git add migrations/
+git commit -m "fix: add migrations"
+git push origin main
+```
+
+Render will auto-deploy and `prisma migrate deploy` will now create all tables.
+
+**Alternative (if you can't run wasp locally):** Use `prisma db push` against the Render external database URL to sync the schema directly:
+```bash
+cd template/app
+DATABASE_URL="<your-render-external-db-url>" \
+  npx prisma db push --schema=.wasp/out/db/schema.prisma
+```
+Then redeploy normally.
+
+---
+
+## How this deployment process works
+
+Both services deploy directly from `main`. Render clones the repo, installs the Wasp CLI, and runs `wasp build` as part of the service's build command — no pre-built branches or Dockerfiles needed.
+
+**Server:** The Wasp-generated server (`template/app/.wasp/out/server/`) is a standard Express/Node.js app. After `wasp build`, the build command runs `npm install`, generates the Prisma client, and bundles the TypeScript source. Render's Node.js runtime then starts the server with `npm run start-production`, which runs `prisma migrate deploy` before starting Express — so database migrations are applied automatically on every deploy.
+
+**Client:** After `wasp build`, Vite builds the React app from `template/app/` with the server URL baked in via `REACT_APP_API_URL`. The compiled output lands in `template/app/.wasp/out/web-app/build/`, which Render serves as a static site.
+
+**Migration files** (`template/app/migrations/`) are committed to `main` and always present in the repo. This is why `wasp db migrate-dev` must be run locally before the first deploy — the migration files it generates need to exist in git for `prisma migrate deploy` to create your database tables.
+
+To redeploy after any code change, just `git push origin main`. Render auto-deploys both services on every new commit.
