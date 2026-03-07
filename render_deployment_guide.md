@@ -76,7 +76,9 @@ git push origin main
 
 You'll create three things in Render: a **PostgreSQL database**, a **Web Service** (the Node.js server), and a **Static Site** (the React client). Create them in this order.
 
-> **Tip:** A `render.yaml` Blueprint at the repo root defines all three resources. You can use **New → Blueprint** in the Render dashboard to create everything in one step instead of manually following 3a–3c. You'll still need to fill in the `sync: false` env vars (like `ADMIN_EMAILS` and `REACT_APP_API_URL`) after the Blueprint applies.
+> **Tip:** A `render.yaml` Blueprint at the repo root defines all three resources. You can use **New → Blueprint** in the Render dashboard to create everything in one step instead of manually following 3a–3c and pick up at step 3d. You'll still need to fill in the `sync: false` env vars (like `ADMIN_EMAILS`) after the Blueprint applies.
+>
+> **`ADMIN_EMAILS`** is optional at deploy time. If you already know which emails should have admin access, enter them (comma-separated). Otherwise, leave it blank and fill it in later under the service's **Environment** settings. It's safe to deploy with it empty.
 
 ### 3a. Create the Render PostgreSQL database
 > Use the `render-deploy` Claude/Codex skill to speed this up so you don't have to create resources manually
@@ -118,7 +120,7 @@ You'll create three things in Render: a **PostgreSQL database**, a **Web Service
 4. Scroll down to **Environment Variables** — add all the server env vars from Step 4 now
 5. Do **not** click Deploy yet — you need the server URL first, which Render shows before you deploy:
    - Look at the top of the Web Service page for the URL (e.g., `https://<YOUR_SERVER_SUBDOMAIN>.onrender.com`)
-   - Note it down — you need it for `WASP_SERVER_URL` and for the client's `REACT_APP_API_URL`
+   - Note it down — you need it for `WASP_SERVER_URL` and `WASP_WEB_CLIENT_URL`
 
 > **Build time note:** The build command installs the Wasp CLI and compiles the app from source. On Render's free tier, this can take 10–15 minutes. If builds time out, upgrade to the Starter plan.
 
@@ -131,12 +133,9 @@ You'll create three things in Render: a **PostgreSQL database**, a **Web Service
    - **Branch**: `main`
    - **Build Command**: (paste the full command from `render.yaml` → `buildCommand` for the client service)
    - **Publish Directory**: `template/app/.wasp/out/web-app/build`
-4. Under **Environment Variables**, add:
-   - `REACT_APP_API_URL` = `https://<YOUR_SERVER_SUBDOMAIN>.onrender.com` (your server URL from 3b)
-
-   > `REACT_APP_API_URL` must be set **before** the first deploy — Vite bakes it into the client bundle at build time. If you need to change the server URL later, update this env var and trigger a redeploy.
+4. No environment variables are required for the client at this stage
 5. Click **Create Static Site** — static sites are free on Render with no time limits
-6. Note your client URL (e.g., `https://<YOUR_CLIENT_SUBDOMAIN>.onrender.com`) — needed for `CLIENT_URL` in the server env vars
+6. Note your client URL (e.g., `https://<YOUR_CLIENT_SUBDOMAIN>.onrender.com`) — needed for `WASP_WEB_CLIENT_URL` in the server env vars
 
 ### 3d. Record your URLs and update env vars
 
@@ -145,7 +144,7 @@ At this point you have both service URLs. Write them down:
 | Variable | Your value |
 |---|---|
 | `WASP_SERVER_URL` | `https://<YOUR_SERVER_SUBDOMAIN>.onrender.com` |
-| `CLIENT_URL` | `https://<YOUR_CLIENT_SUBDOMAIN>.onrender.com` |
+| `WASP_WEB_CLIENT_URL` | `https://<YOUR_CLIENT_SUBDOMAIN>.onrender.com` |
 
 Update `WASP_SERVER_URL` and `WASP_WEB_CLIENT_URL` in your Render Web Service environment variables (Settings → Environment). These two must always stay in sync — `WASP_SERVER_URL` tells the server its own public address, and `WASP_WEB_CLIENT_URL` is used for CORS.
 
@@ -183,7 +182,7 @@ Set these in your Render Web Service (Settings → Environment), or add them to 
 | `DATABASE_URL` | `postgresql://...` | Internal URL from Render PostgreSQL |
 | `JWT_SECRET` | `<random-64-char-string>` | Run: `openssl rand -hex 32` |
 | `WASP_SERVER_URL` | `https://<YOUR_SERVER_SUBDOMAIN>.onrender.com` | Your Render server URL |
-| `CLIENT_URL` | `https://<YOUR_CLIENT_SUBDOMAIN>.onrender.com` | Your Render client URL |
+| `WASP_WEB_CLIENT_URL` | `https://<YOUR_CLIENT_SUBDOMAIN>.onrender.com` | Your Render client URL |
 | `ADMIN_EMAILS` | `you@example.com` | Comma-separated list of admin emails |
 
 > **Stripe, SendGrid, and OpenAI are optional** and skipped in this guide. The app will start and run without them — payments, transactional email, and AI features simply won't work until you add those keys later.
@@ -191,16 +190,6 @@ Set these in your Render Web Service (Settings → Environment), or add them to 
 **Do not set**: `GOOGLE_ANALYTICS_*`, `PLAUSIBLE_*`, `AWS_S3_*`, `GOOGLE_CLIENT_*`, `LEMONSQUEEZY_*`, `POLAR_*`
 
 > For local dev, make sure to use the external URLs for Render services, not the internal URLs
-
-### Client environment variable
-
-Set `REACT_APP_API_URL` on the Static Site to the full server URL before the first deploy:
-
-```
-REACT_APP_API_URL = https://<YOUR_SERVER_SUBDOMAIN>.onrender.com
-```
-
-Vite bakes this value into the client bundle at build time. To change it later, update the env var in Render and trigger a redeploy.
 
 ---
 
@@ -263,7 +252,7 @@ Both services deploy directly from `main`. Render clones the repo, installs the 
 
 **Server:** The Wasp-generated server (`template/app/.wasp/out/server/`) is a standard Express/Node.js app. After `wasp build`, the build command runs `npm install`, generates the Prisma client, and bundles the TypeScript source. Render's Node.js runtime then starts the server with `npm run start-production`, which runs `prisma migrate deploy` before starting Express — so database migrations are applied automatically on every deploy.
 
-**Client:** After `wasp build`, Vite builds the React app from `template/app/` with the server URL baked in via `REACT_APP_API_URL`. The compiled output lands in `template/app/.wasp/out/web-app/build/`, which Render serves as a static site.
+**Client:** After `wasp build`, Vite builds the React app from `template/app/`. The compiled output lands in `template/app/.wasp/out/web-app/build/`, which Render serves as a static site.
 
 **Migration files** (`template/app/migrations/`) are committed to `main` and always present in the repo. This is why `wasp db migrate-dev` must be run locally before the first deploy — the migration files it generates need to exist in git for `prisma migrate deploy` to create your database tables.
 
