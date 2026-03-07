@@ -7,6 +7,7 @@ projects:
           - type: web
             name: myapp-server
             runtime: node
+            repo: https://github.com/Ho1yShif/open-saas
             plan: free
             region: oregon
             branch: main
@@ -56,6 +57,7 @@ projects:
           - type: web
             name: myapp-client
             runtime: static
+            repo: https://github.com/Ho1yShif/open-saas
             branch: main
             buildCommand: >-
               npm install -g @wasp.sh/wasp-cli &&
