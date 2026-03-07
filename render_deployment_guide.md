@@ -8,9 +8,10 @@ This guide covers deploying Open SaaS on Render with a minimal feature set:
 
 ## Prerequisites
 
-- [Wasp CLI](https://wasp.sh/docs/quick-start) installed (`curl -sSL https://get.wasp.sh/installer.sh | sh`)
+- [Wasp CLI](https://wasp.sh/docs/quick-start) installed (`npm install -g @wasp.sh/wasp-cli`)
 - [Node.js 20+](https://nodejs.org/)
 - A [Render](https://render.com) account
+- Docker (optional — only needed for `wasp db migrate-dev` in Step 2; see the no-Docker alternative there)
 
 ---
 
@@ -43,18 +44,14 @@ In `template/app/main.wasp`, find the `head` array and comment out these two lin
 
 Render runs `wasp build` for you during the build phase, but you still need to generate migration files locally and commit them to `main`. The migration files in `template/app/migrations/` are what Prisma uses to create your database tables on first startup — without them, `prisma migrate deploy` will have nothing to apply and signup will return a 500 error.
 
-`wasp db migrate-dev` requires a running local database. The easiest way is to use Wasp's managed dev database, which runs in Docker:
-
-1. Open **Docker Desktop** (install it from [docker.com](https://www.docker.com/products/docker-desktop/) if needed — the free version works fine)
-2. Wait until the Docker icon in your menu bar shows "Docker Desktop is running"
-3. Then run:
+`wasp db migrate-dev` requires a running local database. If you have Docker installed, use Wasp's managed dev database:
 
 ```bash
 cd template/app
-wasp start db
+wasp start db       # leave this running in one terminal
 ```
 
-Leave that terminal running. In a new terminal:
+In a new terminal:
 
 ```bash
 cd template/app
@@ -63,7 +60,7 @@ wasp db migrate-dev
 
 > If prompted for a migration name, enter anything (e.g. `init`).
 
-> **No Docker?** Use `prisma db push` against your Render external database URL instead — see the [Troubleshooting](#troubleshooting) section.
+> **No local database?** If you have a Render PostgreSQL resource, use `prisma db push` against your Render external database URL to sync the schema directly — see the [Troubleshooting](#troubleshooting) section.
 
 Commit the generated migration files to `main`:
 
@@ -263,7 +260,7 @@ Then redeploy normally.
 
 ## How this deployment process works
 
-Both services deploy directly from `main`. Render clones the repo, installs the Wasp CLI, and runs `wasp build` as part of the service's build command — no pre-built branches or Dockerfiles needed.
+Both services deploy directly from `main`. Render clones the repo, installs the Wasp CLI, and runs `wasp build` as part of the service's build command — no pre-built branches needed.
 
 **Server:** The Wasp-generated server (`template/app/.wasp/out/server/`) is a standard Express/Node.js app. After `wasp build`, the build command runs `npm install`, generates the Prisma client, and bundles the TypeScript source. Render's Node.js runtime then starts the server with `npm run start-production`, which runs `prisma migrate deploy` before starting Express — so database migrations are applied automatically on every deploy.
 

@@ -12,8 +12,7 @@ projects:
             branch: main
             autoDeploy: true
             buildCommand: >-
-              curl -sSL https://get.wasp.sh/installer.sh | sh &&
-              export PATH="$HOME/.wasp/bin:$PATH" &&
+              npm install -g @wasp.sh/wasp-cli &&
               cd template/app &&
               wasp build &&
               npm install &&
@@ -59,8 +58,7 @@ projects:
             runtime: static
             branch: main
             buildCommand: >-
-              curl -sSL https://get.wasp.sh/installer.sh | sh &&
-              export PATH="$HOME/.wasp/bin:$PATH" &&
+              npm install -g @wasp.sh/wasp-cli &&
               cd template/app &&
               wasp build &&
               npm install &&
