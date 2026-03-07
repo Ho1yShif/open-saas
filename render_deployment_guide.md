@@ -210,7 +210,6 @@ Vite bakes this value into the client bundle at build time. To change it later, 
 2. Watch the deploy logs — the server will install the Wasp CLI, build the app, and run Prisma migrations automatically on first start
 3. Once both services are green, visit `https://<YOUR_CLIENT_SUBDOMAIN>.onrender.com`
 
-
 ## Features not included (minimal setup)
 
 | Feature | What to do to enable it |
