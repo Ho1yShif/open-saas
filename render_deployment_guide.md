@@ -146,7 +146,8 @@ You'll create three things in Render: a **PostgreSQL database**, a **Web Service
    - **Branch**: `main`
    - **Build Command**: (paste the full command from `render.yaml` → `buildCommand` for the client service)
    - **Publish Directory**: `template/app/.wasp/out/web-app/build`
-4. No environment variables are required for the client at this stage
+4. Add this environment variable (required — Vite embeds it in the client bundle at build time):
+   - `REACT_APP_API_URL` → `https://<YOUR_SERVER_SUBDOMAIN>.onrender.com`
 5. Click **Create Static Site** — static sites are free on Render with no time limits
 6. Note your client URL (e.g., `https://<YOUR_CLIENT_SUBDOMAIN>.onrender.com`) — needed for `WASP_WEB_CLIENT_URL` in the server env vars
 
@@ -203,6 +204,18 @@ Set these in your Render Web Service (Settings → Environment), or add them to 
 **Do not set**: `GOOGLE_ANALYTICS_*`, `PLAUSIBLE_*`, `AWS_S3_*`, `GOOGLE_CLIENT_*`, `LEMONSQUEEZY_*`, `POLAR_*`
 
 > For local dev, make sure to use the external URLs for Render services, not the internal URLs
+
+---
+
+### Client environment variables
+
+Set this in your Render Static Site (Settings → Environment), or include it in your Environment Group:
+
+| Variable | Value | Notes |
+|---|---|---|
+| `REACT_APP_API_URL` | `https://<YOUR_SERVER_SUBDOMAIN>.onrender.com` | Server URL — embedded into the client bundle by Vite at build time |
+
+> This variable must be set **before** Render runs the client build. Vite reads it during `vite build` and bakes the server URL into the compiled JavaScript. If it's missing or wrong, all API calls from the client will fail.
 
 ---
 
