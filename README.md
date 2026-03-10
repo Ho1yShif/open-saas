@@ -49,6 +49,9 @@ You also get access to Wasp's diverse, helpful community if you get stuck or nee
 
 - 🤝 [Wasp Discord](https://discord.gg/aCamt5wCpS)
 
+> [!WARNING]
+> **Email auth is disabled in this deployment.** This repo is configured for Render using `usernameAndPassword` auth instead of the default `email` auth — Wasp blocks production builds when `emailSender` is set to `Dummy`, and no real email provider is configured. Users sign up and log in with a username + password; there is no email verification or password reset flow. All email-related code is preserved and commented out: `template/app/src/auth/email-and-pass/` (marked `// @ts-nocheck`), the "Forgot your password?" link in `LoginPage.tsx`, the cancellation email in `src/payment/stripe/webhook.ts`, and the `emailSender` + three email routes in `main.wasp`. To re-enable email auth, configure a real provider (`SMTP` or `SendGrid`), uncomment `emailSender` in `main.wasp`, switch the auth method back to `email: { ... }`, restore the three routes, and remove the `// @ts-nocheck` headers from the email-and-pass pages.
+
 ## Getting Started
 
 ### Simple Instructions

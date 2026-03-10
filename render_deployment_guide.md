@@ -29,7 +29,20 @@ cp .env.example .env
 
 > Never commit a filled-in env file to git. `.env.example` contains only blank placeholders and is safe to commit.
 
-### 1b. Remove the Plausible script tags from main.wasp
+### 1b. Auth method: username instead of email
+
+This minimal deployment uses **username/password auth** instead of email auth. Wasp blocks production builds when `emailSender` is set to `Dummy`, and setting up a real email provider (SendGrid, SMTP) is out of scope here.
+
+The following changes have already been made to `template/app/main.wasp`:
+- Auth method switched from `email: { ... }` to `username: {}`
+- `emailSender` block removed
+- `RequestPasswordReset`, `PasswordReset`, and `EmailVerification` routes/pages removed
+
+Users sign up and log in with a **username + password** instead of an email address. Password reset via email is not available in this setup.
+
+To switch to email auth later: restore the `email: { ... }` auth block, add an `emailSender` with a real provider (e.g. `SendGrid` or `SMTP`), and restore the three email routes.
+
+### 1c. Remove the Plausible script tags from main.wasp
 
 In `template/app/main.wasp`, find the `head` array and comment out these two lines:
 
@@ -204,7 +217,7 @@ Set these in your Render Web Service (Settings → Environment), or add them to 
 | Feature | What to do to enable it |
 |---|---|
 | Stripe payments | Create Stripe products, set `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, and the three `PAYMENTS_*_PLAN_ID` vars |
-| SendGrid email | Set up a SendGrid sender, update `emailSender` in `main.wasp`, set `SENDGRID_API_KEY` |
+| Email auth + transactional email | Switch auth back to `email: { ... }` in `main.wasp`, configure `emailSender` (SendGrid or SMTP), restore the three email routes, set the relevant API/SMTP env vars |
 | OpenAI / AI features | Set `OPENAI_API_KEY` |
 | Google Analytics | Set `REACT_APP_GOOGLE_ANALYTICS_ID` in client env |
 | Plausible Analytics | Set `PLAUSIBLE_API_KEY`, `PLAUSIBLE_SITE_ID`, `PLAUSIBLE_BASE_URL` in server env |

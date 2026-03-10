@@ -14,6 +14,7 @@ export default function Login() {
         </WaspRouterLink>
         .
       </span>
+      {/* EMAIL AUTH DISABLED — restore when switching back to email auth
       <br />
       <span className="text-sm font-medium text-gray-900">
         Forgot your password?{" "}
@@ -25,6 +26,7 @@ export default function Login() {
         </WaspRouterLink>
         .
       </span>
+      */}
     </AuthPageLayout>
   );
 }

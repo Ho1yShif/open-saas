@@ -46,8 +46,14 @@ projects:
               #   sync: false
               - key: ADMIN_EMAILS
                 sync: false
-              # Optional — uncomment to enable transactional email via SendGrid
-              # - key: SENDGRID_API_KEY
+              # Optional — uncomment to enable transactional email via SMTP
+              # - key: SMTP_HOST
+              #   value: smtp.gmail.com
+              # - key: SMTP_PORT
+              #   value: "587"
+              # - key: SMTP_USERNAME
+              #   sync: false
+              # - key: SMTP_PASSWORD
               #   sync: false
               # Optional — uncomment to enable AI features
               # - key: OPENAI_API_KEY
