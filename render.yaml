@@ -70,11 +70,13 @@ projects:
               npm install -g @wasp.sh/wasp-cli &&
               export PATH="$(npm prefix -g)/bin:$PATH" &&
               wasp build &&
-              cd .wasp/out/web-app &&
               npm install &&
               npx vite build
             staticPublishPath: .wasp/out/web-app/build
             autoDeploy: true
+            envVars:
+              - key: REACT_APP_API_URL
+                value: https://myapp-server-1j1o.onrender.com
             routes:
               - type: rewrite
                 source: /*
